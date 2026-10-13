@@ -122,7 +122,6 @@ input[type=date]{font-size:14px;padding:0 14px}
 .tile{width:50px;height:50px;border-radius:18px;display:grid;place-items:center;font-weight:700;background:var(--tus);color:var(--tusc);box-shadow:inset 0 2px 3px rgba(255,255,255,.85),var(--tilesh)}
 .tile.tw{background:var(--ttw);color:var(--ttwc)}
 .nm{font-weight:700;font-size:17px}.nm span{color:var(--sub);font-weight:400;font-size:14px;margin-left:6px}
-.nm .pd{font-size:12.5px;font-weight:400;margin-left:10px;white-space:nowrap}
 .sub{color:var(--sub);font-size:12.5px;font-variant-numeric:tabular-nums;margin-top:2px}
 .r{text-align:right;font-variant-numeric:tabular-nums}
 .num{font:600 20px/1.2 "Outfit",sans-serif}.chg{font-size:12px}
@@ -133,12 +132,6 @@ input[type=date]{font-size:14px;padding:0 14px}
 .day{padding:38px 16px 16px;margin-top:46px}
 .day>summary{position:absolute;top:-24px;left:50%;transform:translateX(-50%);cursor:pointer;list-style:none;z-index:2}
 .day>summary::-webkit-details-marker{display:none}
-/* 每日總結：個股名稱維持主字級，出現次數改為較小的次要資訊 */
-.sum-title{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.sum-count{font-family:inherit;font-size:13px;font-weight:600;letter-spacing:0;color:var(--sub);white-space:nowrap}
-.sum-records{margin-top:7px;display:grid;gap:4px}
-.sum-record{color:var(--sub);font-size:15px;line-height:1.45;font-variant-numeric:tabular-nums}
-
 .mk{margin:12px 6px 2px;font-weight:700}
 .grp{margin:12px 6px 10px}
 .item.sm{grid-template-columns:1fr auto;border-radius:26px;margin-bottom:12px;padding:11px 18px}
@@ -203,7 +196,7 @@ const API = 'https://script.google.com/macros/s/AKfycbzdq0r0XfLDNftiGHso6d7LvjAt
 const REFRESH_MS = 60000;
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let items = [], view = 'list', errors = [], status = '';
+let items = [], view = 'list', errors = [], status = '', qerr = '';
 let quotes = {}; try { quotes = JSON.parse(localStorage.getItem('quotes')) || {}; } catch (e) {}   // 上次的股價，開啟時先顯示
 
 /* 漲跌顏色：redUp 紅漲綠跌 / greenUp 綠漲紅跌，記在瀏覽器 */
@@ -235,10 +228,10 @@ setTrend(saved);
 $('#trend').onclick = () => setTrend(document.documentElement.dataset.trend === 'redUp' ? 'greenUp' : 'redUp');
 
 const DEMO = [
-  {time:'2026-10-09 09:06:51',market:'台股',code:'6223',name:'旺矽',price:5595,signal:'抄底',period:'240 分'},
-  {time:'2026-10-08 12:48:35',market:'台股',code:'2365',name:'昆盈',price:27.35,signal:'深抄',period:'120 分'},
-  {time:'2026-10-09 00:00:59',market:'美股',code:'COIN',name:'',price:173.81,signal:'買入',period:'D'},
-  {time:'2026-10-09 00:01:48',market:'美股',code:'UUUU',name:'',price:9.89,signal:'減1',period:'W'}
+  {time:'2026-10-09 09:06:51',market:'台股',code:'6223',name:'旺矽',price:5595,signal:'抄底'},
+  {time:'2026-10-08 12:48:35',market:'台股',code:'2365',name:'昆盈',price:27.35,signal:'深抄'},
+  {time:'2026-10-09 00:00:59',market:'美股',code:'COIN',name:'',price:173.81,signal:'買入'},
+  {time:'2026-10-09 00:01:48',market:'美股',code:'UUUU',name:'',price:9.89,signal:'減1'}
 ];
 const hm = t => t.slice(11, 16);
 const SIG_HUE = {'買入':8,'深買':28,'深抄':46,'抄底':90,'回買':150,'加1':190,'減1':222,'高檔風險':280};
@@ -260,17 +253,8 @@ const keyOf = i => [i.time, i.market, i.code, i.signal, i.price].join('|');
 function dbOpen() {
   return new Promise(res => {
     try {
-      const r = indexedDB.open('signal-radar', 2);
-      r.onupgradeneeded = e => {
-        const d = r.result;
-        if (!d.objectStoreNames.contains('alerts')) d.createObjectStore('alerts', {keyPath: 'k'}).createIndex('t', 'time');
-        if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta', {keyPath: 'k'});
-        // v2 新增 period；升級時清除舊快取，讓前端重新取得含週期的資料
-        if (e.oldVersion > 0 && e.oldVersion < 2) {
-          r.transaction.objectStore('alerts').clear();
-          r.transaction.objectStore('meta').clear();
-        }
-      };
+      const r = indexedDB.open('signal-radar', 1);
+      r.onupgradeneeded = () => { const d = r.result; d.createObjectStore('alerts', {keyPath: 'k'}).createIndex('t', 'time'); d.createObjectStore('meta', {keyPath: 'k'}); };
       r.onsuccess = () => { store.db = r.result; res(); };
       r.onerror = r.onblocked = () => res();
     } catch (e) { res(); }
@@ -361,14 +345,17 @@ async function pollNew() {              // 每 30 秒（分頁在前景時）檢
 async function loadQuotes() {
   if (!API) return;
   const list = view === 'list' ? filtered().slice(0, 150) : filtered();
-  const codes = [...new Set(list.map(i => i.code))].slice(0, 120);
+  const codes = [...new Set(list.map(i => i.code))].slice(0, 120), qe = [];
   for (let i = 0; i < codes.length; i += 30) {
     try {
       const j = await (await fetch(API + '?action=quotes&symbols=' + encodeURIComponent(codes.slice(i, i + 30).join(',')))).json();
+      if (j.error) qe.push('股價服務錯誤：' + j.error);
+      (j.errors || []).forEach(m => qe.push(m));
       Object.assign(quotes, j.quotes || {}); render();
       try { localStorage.setItem('quotes', JSON.stringify(quotes)); } catch (e) {}
-    } catch (e) { /* 股價失敗不影響訊號顯示 */ }
+    } catch (e) { qe.push('股價載入失敗：' + e.message); }   // 不影響訊號顯示，但把原因顯示在狀態列
   }
+  qerr = [...new Set(qe)].join('；'); meta();
 }
 
 function filtered() {
@@ -376,7 +363,7 @@ function filtered() {
   return items.filter(i => {
     const d = i.time.slice(0, 10);
     return (!m || i.market === m) && (!lo || d >= lo) && (!hi || d <= hi) &&
-      (!q || (i.code + i.name + i.signal + (i.period || '')).toLowerCase().includes(q));
+      (!q || (i.code + i.name + i.signal).toLowerCase().includes(q));
   });
 }
 
@@ -385,7 +372,7 @@ function liveCell(code) {
   const x = quotes[code];
   if (!x || x.price == null) return '<div class="num">—</div>';
   const c = x.prev ? (x.price - x.prev) / x.prev * 100 : 0, k = c > 0 ? 'up' : c < 0 ? 'down' : '';
-  return `<div class="num">${fmt(x.price)}</div><div class="chg ${k}">今日 ${c > 0 ? '+' : ''}${c.toFixed(2)}%</div>`;
+  return `<div class="num"${x.stale ? ' style="opacity:.6" title="暫時無法更新，顯示稍早的價格"' : x.approx ? ' title="近似值（來源與 TradingView 合約不完全相同）"' : ''}>${x.approx ? '≈' : ''}${fmt(x.price)}</div><div class="chg ${k}">今日 ${c > 0 ? '+' : ''}${c.toFixed(2)}%</div>`;
 }
 /* 利潤% = (現價 − 訊號價) ÷ 訊號價 */
 function profit(i) {
@@ -398,12 +385,12 @@ function profit(i) {
 function item(i) {
   const tw = i.market === '台股';
   return `<article class="item"><div class="tile ${tw ? 'tw' : ''}">${tw ? '台' : '美'}</div>
-    <div><div class="nm">${esc(i.code)}<span>${esc(i.name)}</span>${i.period ? `<span class="pd">⏱ ${esc(i.period)}</span>` : ''}</div>
-    <div class="sub">${sigTag(i.signal)}　${esc(i.time.slice(5, 16))}　訊號價 ${i.price ?? '—'}</div></div>
+    <div><div class="nm">${esc(i.code)}<span>${esc(i.name)}</span></div>
+    <div class="sub">${sigTag(i.signal)} ${esc(i.time.slice(5, 16))}　訊號價 ${i.price ?? '—'}</div></div>
     <div class="r">${liveCell(i.code)}${profit(i)}</div></article>`;
 }
 
-/* 每日總結：日期 → 市場 → 訊號 → 個股（顯示出現次數及每一筆價格、週期、時間） */
+/* 每日總結：日期 → 市場 → 訊號 → 個股（首次出現的價格與時間、出現次數） */
 function summary(list) {
   const asc = [...list].sort((a, b) => a.time < b.time ? -1 : 1), days = {};
   asc.forEach(i => (days[i.time.slice(0, 10)] ||= []).push(i));
@@ -412,28 +399,19 @@ function summary(list) {
       const arr = days[d].filter(i => i.market === m);
       if (!arr.length) return '';
       const g = {};
-      arr.forEach(i => {
-        const row = ((g[i.signal || '其他'] ||= {})[i.code] ||= {first: i, items: []});
-        row.items.push(i);
-      });
+      arr.forEach(i => { ((g[i.signal || '其他'] ||= {})[i.code] ||= {first: i, n: 0}).n++; });
       return `<div class="mk">${m}　${arr.length} 則</div>` + Object.entries(g).map(([s, rows]) =>
-        `<div class="grp">${sigTag(s)}</div>` + Object.values(rows).map(({first: f, items}) => {
-          const records = items.map(x =>
-            `<div class="sum-record">價格 ${x.price ?? '—'}${x.period ? `　⏱ ${esc(x.period)}` : ''}　時間 ${hm(x.time)}</div>`
-          ).join('');
-          return `<div class="item sm"><div>
-            <div class="sum-title"><div class="nm">${esc(f.code)}<span>${esc(f.name)}</span></div><span class="sum-count">出現次數 ${items.length}</span></div>
-            <div class="sum-records">${records}</div>
-          </div><div class="r">${liveCell(f.code)}${profit(f)}</div></div>`;
-        }).join('')
-      ).join('');
+        `<div class="grp">${sigTag(s)}</div>` + Object.values(rows).map(({first: f, n}) =>
+          `<div class="item sm"><div><div class="nm">${esc(f.code)}<span>${esc(f.name)}</span></div>
+          <div class="sub">價格 ${f.price ?? '—'}　時間 ${hm(f.time)}　出現次數 ${n}</div></div>
+          <div class="r">${liveCell(f.code)}${profit(f)}</div></div>`).join('')).join('');
     }).join('');
     return `<details class="glass day" ${n === 0 ? 'open' : ''}><summary>${d}　共 ${days[d].length} 則</summary>${body}</details>`;
   }).join('');
 }
 
 function meta() {
-  $('#meta').innerHTML = [`${view === 'list' ? '訊號列表' : '每日總結'}${status ? '　・　' + status : ''}`, ...errors.map(esc)].join('<br>');
+  $('#meta').innerHTML = [`${view === 'list' ? '訊號列表' : '每日總結'}${status ? '　・　' + status : ''}`, ...errors.map(esc), ...(qerr ? [esc(qerr)] : [])].join('<br>');
 }
 function render() {
   const list = filtered(), {lo, hi} = dates();
