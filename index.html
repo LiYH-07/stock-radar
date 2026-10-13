@@ -186,7 +186,7 @@ input[type=date]{font-size:14px;padding:0 14px}
     <span class="pill"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4L3 5Z"/></svg>篩選</span>
     <div class="wide"><label for="q">搜尋代號、名稱或訊號</label><div class="search"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="q" type="search" placeholder="例如 2330、旺矽、深抄"></div></div>
     <div><label for="mk">市場</label><select id="mk"><option value="">全部</option><option>美股</option><option>台股</option></select></div>
-    <div><label for="days">時間範圍</label><select id="days"><option value="1">最近 1 天</option><option value="3" selected>最近 3 天</option><option value="7">最近 7 天</option><option value="30">最近 30 天</option></select></div>
+    <div><label for="days">時間範圍</label><select id="days"><option value="1" selected>最近 1 天</option><option value="3" >最近 3 天</option><option value="7">最近 7 天</option><option value="30">最近 30 天</option></select></div>
     <div><label for="d1">日期（起）</label><input id="d1" type="date"></div>
     <div><label for="d2">日期（迄，可不填）</label><input id="d2" type="date"></div>
     <button class="clr" id="clr" hidden>清除日期</button>
@@ -200,7 +200,7 @@ input[type=date]{font-size:14px;padding:0 14px}
 <script>
 // 部署 Code.gs 後，把網頁應用程式網址（/exec）貼在這裡；留空則顯示範例資料
 const API = 'https://script.google.com/macros/s/AKfycbzdq0r0XfLDNftiGHso6d7LvjAtzEjH09mJnB9urXqB7nbjv6Wcpw23bALiSfMPgWUwKA/exec';
-const REFRESH_MS = 60000;
+const REFRESH_MS = 300000;
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let items = [], view = 'list', errors = [], status = '';
