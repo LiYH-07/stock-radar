@@ -1,6 +1,6 @@
 /* 靜態檔快取：重複開啟時網頁本體與背景圖直接從本機載入（先顯示舊版，背景悄悄更新，下次開啟即是新版）
    訊號資料不在這裡：GAS API 與 Google Fonts 是跨網域，不經過這個快取，訊號改存在 IndexedDB */
-const CACHE = 'radar-v1';
+const CACHE = 'radar-v2';
 const ASSETS = ['./', 'index.html', 'bg-light.jpg', 'bg-dark.jpg', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => Promise.all(ASSETS.map(a => c.add(a).catch(() => {})))).then(() => self.skipWaiting()));
