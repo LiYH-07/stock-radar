@@ -128,7 +128,7 @@ input[type=date]{font-size:14px;padding:0 14px}
 .up{color:var(--up)}.down{color:var(--down)}
 .pct{display:inline-block;margin-top:3px;border-radius:999px;padding:0 10px;font-size:12px;font-weight:700;background:color-mix(in srgb,var(--c,var(--sub)) 20%,rgba(255,255,255,.06));color:var(--c,var(--sub));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--c,var(--sub)) 40%,transparent)}
 .pct.up{--c:var(--up)}.pct.down{--c:var(--down)}
-.sig{display:inline-block;border-radius:999px;padding:0 10px;font-size:12px;font-weight:700;color:hsl(var(--h) 38% 20%);background:hsl(var(--h) 42% 80%);box-shadow:inset 0 1px 2px rgba(255,255,255,.75),0 0 10px -3px hsl(var(--h) 45% 70%/.6)}
+.cycle{display:inline-block;margin-left:5px;border-radius:999px;padding:0 9px;font-size:12px;font-weight:700;color:var(--link);background:color-mix(in srgb,var(--a2) 15%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--a2) 35%,transparent);white-space:nowrap}\n.sig{display:inline-block;border-radius:999px;padding:0 10px;font-size:12px;font-weight:700;color:hsl(var(--h) 38% 20%);background:hsl(var(--h) 42% 80%);box-shadow:inset 0 1px 2px rgba(255,255,255,.75),0 0 10px -3px hsl(var(--h) 45% 70%/.6)}
 .day{padding:38px 16px 16px;margin-top:46px}
 .day>summary{position:absolute;top:-24px;left:50%;transform:translateX(-50%);cursor:pointer;list-style:none;z-index:2}
 .day>summary::-webkit-details-marker{display:none}
@@ -228,10 +228,10 @@ setTrend(saved);
 $('#trend').onclick = () => setTrend(document.documentElement.dataset.trend === 'redUp' ? 'greenUp' : 'redUp');
 
 const DEMO = [
-  {time:'2026-10-09 09:06:51',market:'台股',code:'6223',name:'旺矽',price:5595,signal:'抄底'},
-  {time:'2026-10-08 12:48:35',market:'台股',code:'2365',name:'昆盈',price:27.35,signal:'深抄'},
-  {time:'2026-10-09 00:00:59',market:'美股',code:'COIN',name:'',price:173.81,signal:'買入'},
-  {time:'2026-10-09 00:01:48',market:'美股',code:'UUUU',name:'',price:9.89,signal:'減1'}
+  {time:'2026-10-09 09:06:51',market:'台股',code:'6223',name:'旺矽',price:5595,signal:'抄底',cycle:'120 (分)'},
+  {time:'2026-10-08 12:48:35',market:'台股',code:'2365',name:'昆盈',price:27.35,signal:'深抄',cycle:'D'},
+  {time:'2026-10-09 00:00:59',market:'美股',code:'COIN',name:'',price:173.81,signal:'買入',cycle:'240 (分)'},
+  {time:'2026-10-09 00:01:48',market:'美股',code:'UUUU',name:'',price:9.89,signal:'減1',cycle:'W'}
 ];
 const hm = t => t.slice(11, 16);
 const SIG_HUE = {'買入':8,'深買':28,'深抄':46,'抄底':90,'回買':150,'加1':190,'減1':222,'高檔風險':280};
@@ -243,6 +243,7 @@ const sigHue = s => {
   return h;
 };
 const sigTag = s => s ? `<span class="sig" style="--h:${sigHue(s)}">${esc(s)}</span>` : '';
+const cycleTag = c => c ? `<span class="cycle">週期 ${esc(c)}</span>` : '';
 const dates = () => { const a = $('#d1').value, b = $('#d2').value; return {lo: a, hi: b || a}; };
 
 /* ===== 本機快取（IndexedDB）：舊訊號存在手機 / 電腦，開啟先秒顯示；之後只向後端要「新的」 ===== */
@@ -306,8 +307,18 @@ async function syncNew() {
   try {
     const last = await metaGet('last');
     let got;
-    if (!last) { got = await fetchAlerts('&days=' + FIRST_DAYS); await metaSet('covered', tpe(FIRST_DAYS * 864e5)); }
-    else got = await fetchAlerts('&since=' + encodeURIComponent(last));
+    // 新增週期欄位後，首次同步時回補最近 30 天，讓已快取的舊訊號也更新 cycle。
+    const cycleBackfill = await metaGet('cycleBackfill');
+    if (!cycleBackfill) {
+      got = await fetchAlerts('&days=' + FIRST_DAYS);
+      await metaSet('cycleBackfill', true);
+      if (!last) await metaSet('covered', tpe(FIRST_DAYS * 864e5));
+    } else if (!last) {
+      got = await fetchAlerts('&days=' + FIRST_DAYS);
+      await metaSet('covered', tpe(FIRST_DAYS * 864e5));
+    } else {
+      got = await fetchAlerts('&since=' + encodeURIComponent(last));
+    }
     if (got.length) await dbPut(got);
     await metaSet('last', got.reduce((m, i) => i.time > m ? i.time : m, last || '0000-01-01 00:00:00'));
     errors = []; status = '已同步 ' + new Date().toTimeString().slice(0, 8);
@@ -360,7 +371,7 @@ function filtered() {
   return items.filter(i => {
     const d = i.time.slice(0, 10);
     return (!m || i.market === m) && (!lo || d >= lo) && (!hi || d <= hi) &&
-      (!q || (i.code + i.name + i.signal).toLowerCase().includes(q));
+      (!q || (i.code + i.name + i.signal + (i.cycle || '')).toLowerCase().includes(q));
   });
 }
 
@@ -383,7 +394,7 @@ function item(i) {
   const tw = i.market === '台股';
   return `<article class="item"><div class="tile ${tw ? 'tw' : ''}">${tw ? '台' : '美'}</div>
     <div><div class="nm">${esc(i.code)}<span>${esc(i.name)}</span></div>
-    <div class="sub">${sigTag(i.signal)} ${esc(i.time.slice(5, 16))}　訊號價 ${i.price ?? '—'}</div></div>
+    <div class="sub">${sigTag(i.signal)} ${cycleTag(i.cycle)} ${esc(i.time.slice(5, 16))}　訊號價 ${i.price ?? '—'}</div></div>
     <div class="r">${liveCell(i.code)}${profit(i)}</div></article>`;
 }
 
@@ -400,7 +411,7 @@ function summary(list) {
       return `<div class="mk">${m}　${arr.length} 則</div>` + Object.entries(g).map(([s, rows]) =>
         `<div class="grp">${sigTag(s)}</div>` + Object.values(rows).map(({first: f, n}) =>
           `<div class="item sm"><div><div class="nm">${esc(f.code)}<span>${esc(f.name)}</span></div>
-          <div class="sub">價格 ${f.price ?? '—'}　時間 ${hm(f.time)}　出現次數 ${n}</div></div>
+          <div class="sub">${cycleTag(f.cycle)}　價格 ${f.price ?? '—'}　時間 ${hm(f.time)}　出現次數 ${n}</div></div>
           <div class="r">${liveCell(f.code)}${profit(f)}</div></div>`).join('')).join('');
     }).join('');
     return `<details class="glass day" ${n === 0 ? 'open' : ''}><summary>${d}　共 ${days[d].length} 則</summary>${body}</details>`;
