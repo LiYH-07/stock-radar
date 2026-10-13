@@ -1,16 +1,18 @@
-// 最小化 Service Worker：讓 Chrome 判定為可安裝；API 請求一律走網路，不快取
-const CACHE = 'radar-shell-v1';
-const SHELL = ['./', './index.html', './icon-192.png', './icon-512.png'];
+/* 靜態檔快取：重複開啟時網頁本體與背景圖直接從本機載入（先顯示舊版，背景悄悄更新，下次開啟即是新版）
+   訊號資料不在這裡：GAS API 與 Google Fonts 是跨網域，不經過這個快取，訊號改存在 IndexedDB */
+const CACHE = 'radar-v1';
+const ASSETS = ['./', 'index.html', 'bg-light.jpg', 'bg-dark.jpg', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => Promise.all(ASSETS.map(a => c.add(a).catch(() => {})))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', e => {
-  const r = e.request, u = new URL(r.url);
-  if (r.method !== 'GET' || u.origin !== location.origin) return; // GAS / Yahoo / 字型不攔截
-  e.respondWith(fetch(r).then(res => {
-    const copy = res.clone(); caches.open(CACHE).then(c => c.put(r, copy)).catch(() => {}); return res;
-  }).catch(() => caches.match(r).then(m => m || caches.match('./index.html'))));
+  const u = new URL(e.request.url);
+  if (e.request.method !== 'GET' || u.origin !== location.origin) return;
+  e.respondWith(caches.match(e.request).then(hit => {
+    const net = fetch(e.request).then(r => { if (r.ok) caches.open(CACHE).then(c => c.put(e.request, r.clone())); return r; }).catch(() => hit);
+    return hit || net;
+  }));
 });
